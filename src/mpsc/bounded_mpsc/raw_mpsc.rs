@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering::{Release,Acquire,Relaxed};
 
 
 pub struct RawMpsc<T>{
-    head:CachePadded<AtomicUsize>,
+    next_head:CachePadded<AtomicUsize>,
     tail:CachePadded<AtomicUsize>,
     head_advance:CachePadded<AtomicUsize>,
     slots:SlotArr<T>
@@ -18,11 +18,11 @@ impl<T> RawMpsc<T>{
     
     pub fn new(capacity:usize)->Self{
         let slots = SlotArr::new(capacity);
-        let head = CachePadded::new(0.into());
+        let next_head = CachePadded::new(0.into());
         let tail = CachePadded::new(0.into());
         let head_advance = CachePadded::new(0.into());
         Self{
-            head,
+            next_head,
             tail,
             head_advance,
             slots

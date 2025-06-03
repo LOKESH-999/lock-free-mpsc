@@ -7,11 +7,11 @@ use std::sync::atomic::{
 
 /// A slot in a concurrent queue or stack, representing a cell that can store a value of type `T`.
 ///
-/// The `Slot` manages the lifecycle of a single value with a status flag indicating whether
+/// The `Slot` manages the lifecycle of a single value with a state flag indicating whether
 /// the slot is ready, reserved, or registered (occupied). It is designed for use in lock-free
 /// multiple-producer, single-consumer (MPSC) and similar concurrent data structures.
 ///
-/// # Atomic Status Flags
+/// # Atomic state Flags
 ///
 /// - `READY` (0): The slot is empty and ready to be written.
 /// - `RESERVED` (1): The slot is reserved for writing.
@@ -20,8 +20,8 @@ use std::sync::atomic::{
 pub struct Slot<T> {
     /// The storage for the value in the slot. Access is controlled via `UnsafeCell` and `MaybeUninit`.
     pub(crate) value: UnsafeCell<MaybeUninit<T>>,
-    /// The atomic status of the slot.
-    pub(crate) status: AtomicU8,
+    /// The atomic state of the slot.
+    pub(crate) state: AtomicU8,
 }
 
 impl<T> Slot<T> {
@@ -41,12 +41,12 @@ impl<T> Slot<T> {
     ///
     pub fn set(&self, data: T) -> Result<(), T> {
         if self
-            .status
+            .state
             .compare_exchange(READY, RESERVED, AcqRel, Relaxed)
             .is_ok()
         {
             unsafe { self.unchecked_set(data) };
-            self.status.store(REGISTERED, Release);
+            self.state.store(REGISTERED, Release);
             Ok(())
         } else {
             Err(data)
@@ -65,7 +65,7 @@ impl<T> Slot<T> {
     ///
     pub fn unset(&self) -> Result<T, ()> {
         if self
-            .status
+            .state
             .compare_exchange(REGISTERED, READY, AcqRel, Relaxed)
             .is_ok()
         {
@@ -75,22 +75,22 @@ impl<T> Slot<T> {
         }
     }
 
-    /// Writes a value into the slot without checking or updating the status.
+    /// Writes a value into the slot without checking or updating the state.
     ///
     /// # Safety
     ///
-    /// This function bypasses synchronization and status checks. It must only be used
+    /// This function bypasses synchronization and state checks. It must only be used
     /// when the caller has exclusive access to the slot and the slot's state is known.
     #[inline(always)]
     pub unsafe fn unchecked_set(&self, data: T) {
         unsafe { (&mut *self.value.get()).write(data) };
     }
 
-    /// Reads and removes the value from the slot without checking or updating the status.
+    /// Reads and removes the value from the slot without checking or updating the state.
     ///
     /// # Safety
     ///
-    /// This function bypasses synchronization and status checks. The caller must ensure that
+    /// This function bypasses synchronization and state checks. The caller must ensure that
     /// the slot actually contains a value and that the state is valid.
     #[inline(always)]
     pub unsafe fn unchecked_unset(&self) -> T {
@@ -98,7 +98,7 @@ impl<T> Slot<T> {
     }
 }
 
-// Atomic status constants
+// Atomic state constants
 const READY: u8 = 0; // Slot is empty
 const RESERVED: u8 = 1; // Slot is reserved for writing
 const REGISTERED: u8 = 2; // Slot contains data
@@ -111,7 +111,7 @@ mod tests {
     fn test_set_and_unset_success() {
         let slot = Slot {
             value: UnsafeCell::new(MaybeUninit::uninit()),
-            status: AtomicU8::new(READY),
+            state: AtomicU8::new(READY),
         };
 
         // Attempt to set a value
@@ -122,14 +122,14 @@ mod tests {
         assert_eq!(val, 42);
 
         // After unset, slot should be READY
-        assert_eq!(slot.status.load(Relaxed), READY);
+        assert_eq!(slot.state.load(Relaxed), READY);
     }
 
     #[test]
     fn test_set_failure_when_not_ready() {
         let slot = Slot {
             value: UnsafeCell::new(MaybeUninit::uninit()),
-            status: AtomicU8::new(RESERVED),
+            state: AtomicU8::new(RESERVED),
         };
 
         // Attempt to set should fail because slot is RESERVED
@@ -142,7 +142,7 @@ mod tests {
     fn test_unset_failure_when_not_registered() {
         let slot = Slot {
             value: UnsafeCell::new(MaybeUninit::<i32>::uninit()),
-            status: AtomicU8::new(RESERVED), // Not REGISTERED yet
+            state: AtomicU8::new(RESERVED), // Not REGISTERED yet
         };
 
         // Attempt to unset should fail
@@ -154,7 +154,7 @@ mod tests {
     fn test_unchecked_set_and_unset() {
         let slot = Slot {
             value: UnsafeCell::new(MaybeUninit::uninit()),
-            status: AtomicU8::new(RESERVED), // Skip READY check
+            state: AtomicU8::new(RESERVED), // Skip READY check
         };
 
         unsafe {
