@@ -10,8 +10,8 @@ A high-performance, lock-free, bounded & unbounded multiple-producer single-cons
 
 - **Lock-Free Design**: Ensures high performance and scalability in multi-threaded environments.
 - **Bounded Queue**: Implements a fixed-capacity queue to prevent unbounded memory usage.
-- **Global Backoff**: Reduces contention using an exponential backoff strategy.
-- **Cache Optimization**: Uses cache-line padding to minimize false sharing and improve performance.
+- **Global Backoff**: Reduces contention using an exponential backoff strategy. For more details, [refer to the backoff implementation](https://github.com/LOKESH-999/lock-free-mpsc/blob/main/src/backoff.rs).
+- **Cache Optimization**: Uses cache-line padding to minimize false sharing and improve performance. For more details, [refer to the backoff implementation](http://github.com/LOKESH-999/lock-free-mpsc/blob/main/src/cache_padded.rs).
 
 ---
 
