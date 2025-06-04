@@ -16,7 +16,8 @@ A high-performance, lock-free, bounded & unbounded multiple-producer single-cons
 ---
 
 ## Repository Structure
-lock-free-mpsc/
+*lock-free-mpsc*
+
     ├── src/
     │   ├── backoff.rs          # Global backoff mechanism for contention management
     │   ├── cache_padded.rs     # Cache-line padding for atomic variables
