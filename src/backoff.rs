@@ -53,7 +53,7 @@ impl GlobalBackoff {
     /// Should typically be called once before entering a contention-sensitive region.
     
     #[inline(always)]
-    pub fn reg_wait(&self) {
+    pub unsafe fn reg_wait(&self) {
         let n_iters = self.active_threads.fetch_add(1, AcqRel);
         self.spin_for(n_iters as u32);
     }
@@ -63,7 +63,7 @@ impl GlobalBackoff {
     /// Decrements the count of active contending threads. Should be called once a thread
     /// exits a contention-sensitive operation.
     #[inline(always)]
-    pub fn de_reg(&self) {
+    pub unsafe fn de_reg(&self) {
         self.active_threads.fetch_sub(1, AcqRel);
     }
 

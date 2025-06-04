@@ -29,7 +29,7 @@ impl<T:Debug> RawMpsc<T>{
     }
     pub fn push(&self,data:T)->Result<(),T>{
         let mut curr_head = self.next_head.load(Acquire);
-        self.global_wait.reg_wait();
+        unsafe { self.global_wait.reg_wait() };
         loop {
             let next_head = curr_head + 1 ;
             let is_less = unsafe { transmute::<isize,usize>(-((next_head < self.slots.capacity) as isize)) };
@@ -43,11 +43,11 @@ impl<T:Debug> RawMpsc<T>{
                     Ok(_)=>break,
                 }
             }else {
-                self.global_wait.de_reg();
+                unsafe { self.global_wait.de_reg() };
                 return Err(data);
             }
         }
-        self.global_wait.de_reg();
+        unsafe { self.global_wait.de_reg() };
         // it shoudnt pannic
         self.slots.set(curr_head, data).unwrap();
         Ok(())
