@@ -1,87 +1,147 @@
+//! A low-level bounded Multi-Producer Single-Consumer (MPSC) queue.
+//!
+//! This implementation provides a non-blocking, lock-free bounded queue where
+//! multiple producer threads can push data, but only a single consumer is allowed
+//! to pop data.
+//!
+//! Internally, it uses an array of slots with atomic head and tail indices, along
+//! with an exponential backoff strategy to handle contention efficiently.
+
 use std::{fmt::Debug, mem::transmute, sync::atomic::AtomicUsize};
-
-use crate::{backoff::GlobalBackoff, cache_padded::CachePadded};
-
-use super::slot_arr::SlotArr;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
 
+use crate::{backoff::GlobalBackoff, cache_padded::CachePadded};
+use super::slot_arr::SlotArr;
+
+/// A bounded lock-free multi-producer single-consumer (MPSC) queue.
+///
+/// `RawMpsc<T>` supports multiple threads concurrently pushing elements
+/// while allowing only one thread to pop elements. It uses a ring buffer internally,
+/// and contention is reduced using a global exponential backoff strategy.
+///
+/// This is a low-level primitive used by higher-level channel abstractions.
 pub struct RawMpsc<T> {
+    /// The next index to be pushed to by producers.
     next_head: CachePadded<AtomicUsize>,
+    /// The next index to be popped by the single consumer.
     tail: CachePadded<AtomicUsize>,
+    /// Global exponential backoff to reduce contention during CAS failure.
     global_wait: CachePadded<GlobalBackoff>,
+    /// Internal storage array for queue slots.
     slots: SlotArr<T>,
 }
 
 impl<T: Debug> RawMpsc<T> {
+    /// Creates a new bounded MPSC queue with the given capacity.
+    ///
+    /// Internally allocates `capacity + 1` slots to avoid ambiguity between full and empty.
     pub fn new(capacity: usize) -> Self {
-        let slots = SlotArr::new(capacity+1);
-        let next_head = CachePadded::new(0.into());
-        let tail = CachePadded::new(0.into());
+        let slots = SlotArr::new(capacity + 1);
+        let next_head = CachePadded::new(AtomicUsize::new(0));
+        let tail = CachePadded::new(AtomicUsize::new(0));
         let global_wait = CachePadded::new(GlobalBackoff::new());
+
         Self {
             next_head,
             tail,
-            slots,
             global_wait,
+            slots,
         }
     }
+
+    /// Attempts to push data into the queue.
+    ///
+    /// Returns `Ok(())` if the push succeeded, or returns the original `data` back
+    /// in `Err(data)` if the queue is full.
     pub fn push(&self, data: T) -> Result<(), T> {
         unsafe { self.global_wait.reg_wait() };
         let curr_head = loop {
             let curr_head = self.next_head.load(Acquire);
             let next_head = curr_head + 1;
+
+            // Bounds the index to wrap around at capacity
             let is_less =
                 unsafe { transmute::<isize, usize>(-((next_head < self.slots.capacity) as isize)) };
             let next_head_bounded = next_head & is_less;
-            println!("curr: {curr_head}, next: {next_head_bounded}");
+
             if next_head_bounded != self.tail.load(Acquire) {
                 match self
                     .next_head
                     .compare_exchange(curr_head, next_head_bounded, AcqRel, Acquire)
                 {
-                    Err(_) => self.global_wait.wait(),
                     Ok(_) => {
                         unsafe { self.global_wait.de_reg() };
                         break curr_head;
                     }
+                    Err(_) => self.global_wait.wait(),
                 }
             } else {
                 unsafe { self.global_wait.de_reg() };
                 return Err(data);
             }
         };
-        // it shoudnt pannic
-        self.slots.set(curr_head, data).unwrap();
+
+        self.slots.set(curr_head, data).unwrap(); // infallible under valid usage
         Ok(())
     }
 
+    /// Attempts to pop a value from the queue.
+    ///
+    /// Returns `Some(T)` if a value was available, or `None` if the queue is empty.
     pub fn pop(&self) -> Option<T> {
         let tail = self.tail.load(Acquire);
         let head = self.next_head.load(Acquire);
-        println!("tail : {tail},head : {head}");
+
         if tail != head {
-            match self.slots.unset(tail){
-                Ok(data)=>{
+            match self.slots.unset(tail) {
+                Ok(data) => {
                     let next_tail = tail + 1;
                     let is_less =
                         unsafe { transmute::<isize, usize>(-((next_tail < self.slots.capacity) as isize)) };
                     let next_tail_bounded = next_tail & is_less;
-                    println!("tail:{tail},new_bounded:{next_tail_bounded}");
                     self.tail.store(next_tail_bounded, Release);
-                    return Some(data);
+                    Some(data)
                 }
-                Err(_)=>{println!("unset err");return None}
+                Err(_) => {
+                    // Corruption or double-pop should not happen in valid single-consumer usage
+                    None
+                }
             }
+        } else {
+            None
         }
-        None
     }
 }
 
-unsafe impl<T> Send for RawMpsc<T>{}
-unsafe impl<T> Sync for RawMpsc<T>{}
+impl<T> Drop for RawMpsc<T> {
+    /// Drops the queue and all remaining values in it.
+    ///
+    /// Any items that have not been consumed are dropped here.
+    fn drop(&mut self) {
+        let head = self.next_head.load(Acquire);
+        let tail = self.tail.load(Acquire);
+        let mut curr = head;
+
+        while curr != tail {
+            let next_curr = {
+                let next = curr + 1;
+                let is_less =
+                    unsafe { transmute::<isize, usize>(-((next < self.slots.capacity) as isize)) };
+                next & is_less
+            };
+            let _ = self.slots.unset(curr);
+            curr = next_curr;
+        }
+    }
+}
+
+// SAFETY: `RawMpsc` is `Send` and `Sync` as long as `T` is properly handled within the SlotArr.
+unsafe impl<T> Send for RawMpsc<T> {}
+unsafe impl<T> Sync for RawMpsc<T> {}
 
 
-#[cfg(test)]
+
+#[cfg(all(test, not(no_std)))]
 mod tests {
     use super::*;
     use std::sync::{Arc, Barrier};
@@ -202,5 +262,14 @@ mod tests {
         assert_eq!(q.pop(), Some(1));
         assert_eq!(q.pop(), None);
         assert!(q.push(3).is_ok()); // no wraparound
+    }
+
+
+    #[test]
+    fn free_drop_test() {
+        let q = RawMpsc::new(10);
+        for i in 0..10{
+            assert!(q.push(i).is_ok())
+        }
     }
 }
