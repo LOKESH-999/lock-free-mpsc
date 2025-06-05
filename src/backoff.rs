@@ -51,7 +51,7 @@ impl GlobalBackoff {
     /// to the number of currently active threads.
     ///
     /// Should typically be called once before entering a contention-sensitive region.
-    
+
     #[inline(always)]
     pub unsafe fn reg_wait(&self) {
         let n_iters = self.active_threads.fetch_add(1, AcqRel);
