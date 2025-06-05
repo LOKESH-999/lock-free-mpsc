@@ -99,7 +99,7 @@ impl<T> Slot<T> {
 }
 
 // Atomic state constants
-const READY: u8 = 0; // Slot is empty
+pub(super) const READY: u8 = 0; // Slot is empty
 const RESERVED: u8 = 1; // Slot is reserved for writing
 const REGISTERED: u8 = 2; // Slot contains data
 
