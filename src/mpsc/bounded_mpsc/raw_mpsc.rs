@@ -7,11 +7,11 @@
 //! Internally, it uses an array of slots with atomic head and tail indices, along
 //! with an exponential backoff strategy to handle contention efficiently.
 
-use std::{fmt::Debug, mem::transmute, sync::atomic::AtomicUsize};
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Release};
+use std::{fmt::Debug, mem::transmute, sync::atomic::AtomicUsize};
 
-use crate::{backoff::GlobalBackoff, cache_padded::CachePadded};
 use super::slot_arr::SlotArr;
+use crate::{backoff::GlobalBackoff, cache_padded::CachePadded};
 
 /// A bounded lock-free multi-producer single-consumer (MPSC) queue.
 ///
@@ -96,8 +96,9 @@ impl<T: Debug> RawMpsc<T> {
             match self.slots.unset(tail) {
                 Ok(data) => {
                     let next_tail = tail + 1;
-                    let is_less =
-                        unsafe { transmute::<isize, usize>(-((next_tail < self.slots.capacity) as isize)) };
+                    let is_less = unsafe {
+                        transmute::<isize, usize>(-((next_tail < self.slots.capacity) as isize))
+                    };
                     let next_tail_bounded = next_tail & is_less;
                     self.tail.store(next_tail_bounded, Release);
                     Some(data)
@@ -139,14 +140,12 @@ impl<T> Drop for RawMpsc<T> {
 unsafe impl<T> Send for RawMpsc<T> {}
 unsafe impl<T> Sync for RawMpsc<T> {}
 
-
-
 #[cfg(all(test, not(no_std)))]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::sync::{Arc, Barrier};
     use std::thread;
-    use std::collections::HashSet;
 
     #[test]
     fn test_basic_push_pop() {
@@ -264,11 +263,10 @@ mod tests {
         assert!(q.push(3).is_ok()); // no wraparound
     }
 
-
     #[test]
     fn free_drop_test() {
         let q = RawMpsc::new(10);
-        for i in 0..10{
+        for i in 0..10 {
             assert!(q.push(i).is_ok())
         }
     }

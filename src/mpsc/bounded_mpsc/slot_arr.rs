@@ -1,11 +1,12 @@
 use std::{
-    alloc::{alloc, dealloc, Layout},
-    ptr::NonNull, sync::atomic::Ordering::Release,
+    alloc::{Layout, alloc, dealloc},
+    ptr::NonNull,
+    sync::atomic::Ordering::Release,
 };
 
-use crate::mpsc::bounded_mpsc::slot::READY;
+use crate::mpsc::slot::READY;
 
-use super::slot::Slot;
+use super::super::slot::Slot;
 
 pub struct SlotArr<T> {
     pub(super) ptr: NonNull<Slot<T>>,
@@ -20,9 +21,11 @@ impl<T> SlotArr<T> {
         Self { ptr, capacity }
     }
 
-    fn init_slots(ptr:NonNull<Slot<T>>,capacity: usize){
-        for idx in 0..capacity{
-            unsafe { (&*ptr.as_ptr().add(idx)).state.store(READY, Release); }
+    fn init_slots(ptr: NonNull<Slot<T>>, capacity: usize) {
+        for idx in 0..capacity {
+            unsafe {
+                (&*ptr.as_ptr().add(idx)).state.store(READY, Release);
+            }
         }
     }
 
