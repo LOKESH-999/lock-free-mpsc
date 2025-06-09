@@ -25,7 +25,7 @@ pub struct LocalBackoff {
 /// Maximum number of spin iterations allowed during backoff.
 ///
 /// This is used to cap the exponential growth in spin iterations.
-const MAX_SPIN: u32 = 1 << 18;
+const MAX_SPIN: u32 = 1 << 16;
 
 impl LocalBackoff {
     /// Creates a new `LocalBackoff` instance with an initial spin count of 0.
@@ -54,5 +54,17 @@ impl LocalBackoff {
         for _ in 0..curr_spin {
             spin_loop();
         }
+    }
+
+    /// Resets the backoff spin count to its initial value.
+    ///
+    /// This method is typically called after successful acquisition of a resource,
+    /// such as a lock, to prepare the backoff mechanism for future contention scenarios.
+    ///
+    /// Resets the internal spin counter to `1`, which is the minimum non-zero spin.
+    /// This avoids a completely zero-length spin on the next `wait()` and ensures
+    /// a minimal delay is applied if immediate contention occurs again.
+    pub fn reset(&self) {
+        self.spins.set(1);
     }
 }

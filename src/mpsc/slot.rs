@@ -1,8 +1,9 @@
 use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
+use std::sync::atomic::fence;
 use std::sync::atomic::{
     AtomicU8,
-    Ordering::{AcqRel, Relaxed, Release},
+    Ordering::{AcqRel, Acquire, Relaxed, Release},
 };
 
 /// A slot in a concurrent queue or stack, representing a cell that can store a value of type `T`.
@@ -84,6 +85,7 @@ impl<T> Slot<T> {
     #[inline(always)]
     pub unsafe fn unchecked_set(&self, data: T) {
         unsafe { (&mut *self.value.get()).write(data) };
+        fence(Release);
     }
 
     /// Reads and removes the value from the slot without checking or updating the state.
@@ -94,6 +96,7 @@ impl<T> Slot<T> {
     /// the slot actually contains a value and that the state is valid.
     #[inline(always)]
     pub unsafe fn unchecked_unset(&self) -> T {
+        fence(Acquire);
         unsafe { (&*self.value.get()).assume_init_read() }
     }
 }
