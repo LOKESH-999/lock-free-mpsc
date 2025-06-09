@@ -67,10 +67,12 @@ impl<T> Slot<T> {
     pub fn unset(&self) -> Result<T, ()> {
         if self
             .state
-            .compare_exchange(REGISTERED, READY, AcqRel, Relaxed)
+            .compare_exchange(REGISTERED, RESERVED, AcqRel, Relaxed)
             .is_ok()
         {
-            Ok(unsafe { self.unchecked_unset() })
+            let ret = unsafe { self.unchecked_unset() };
+            self.state.store(READY, Release);
+            Ok(ret)
         } else {
             Err(())
         }
