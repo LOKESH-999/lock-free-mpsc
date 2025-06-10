@@ -3,6 +3,8 @@
 
 ! AND ALSO THIS IS NOT PRODUCTION READY
 
+! EVEN BELOW MENTIONED DETAILS CAN BE OUTDATED
+
 A high-performance, lock-free, bounded & unbounded multiple-producer single-consumer (MPSC) queue implemented in Rust. This project is designed for concurrent environments, leveraging atomic operations and a global backoff mechanism to handle contention efficiently.
 
 
