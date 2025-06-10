@@ -48,6 +48,7 @@ impl<T> Segment<T> {
 
     #[inline]
     pub fn set(&self, index: usize, data: T) -> Result<(), T> {
+        assert!(index<SEGMENT_SIZE);
         let ptr = self.buff.as_ptr();
         let slot = unsafe { &*ptr.add(index) };
         slot.set(data)
