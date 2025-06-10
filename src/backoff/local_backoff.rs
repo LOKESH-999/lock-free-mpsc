@@ -6,17 +6,7 @@ use std::{cell::Cell, hint::spin_loop};
 /// data structures, where threads compete for the same resource. It exponentially increases
 /// the number of CPU spin iterations each time `wait` is called, which helps reduce
 /// contention and CPU usage under heavy load.
-///
-/// # Example
-/// ```
-/// let backoff = LocalBackoff::new();
-/// loop {
-///     if try_acquire_lock() {
-///         break;
-///     }
-///     backoff.wait();
-/// }
-/// ```
+
 pub struct LocalBackoff {
     /// Tracks the current number of spin iterations for this thread.
     spins: Cell<u32>,

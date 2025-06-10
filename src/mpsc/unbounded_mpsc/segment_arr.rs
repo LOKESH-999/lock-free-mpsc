@@ -48,7 +48,7 @@ impl<T> Segment<T> {
 
     #[inline]
     pub fn set(&self, index: usize, data: T) -> Result<(), T> {
-        assert!(index<SEGMENT_SIZE);
+        debug_assert!(index<SEGMENT_SIZE);
         let ptr = self.buff.as_ptr();
         let slot = unsafe { &*ptr.add(index) };
         slot.set(data)
@@ -56,6 +56,7 @@ impl<T> Segment<T> {
 
     #[inline]
     pub fn unset(&self, index: usize) -> Option<T> {
+        debug_assert!(index<SEGMENT_SIZE);
         let ptr = self.buff.as_ptr();
         let slot = unsafe { &*ptr.add(index) };
         slot.unset().ok()
@@ -63,6 +64,7 @@ impl<T> Segment<T> {
 
     #[inline]
     pub unsafe fn set_unchecked(&self, index: usize, data: T) {
+        debug_assert!(index<SEGMENT_SIZE);
         let ptr = self.buff.as_ptr();
         let slot = unsafe { &*ptr.add(index) };
         unsafe { slot.unchecked_set(data) };
@@ -70,6 +72,7 @@ impl<T> Segment<T> {
 
     #[inline]
     pub unsafe fn unset_unchecked(&self, index: usize) -> T {
+        debug_assert!(index<SEGMENT_SIZE);
         let ptr = self.buff.as_ptr();
         let slot = unsafe { &*ptr.add(index) };
         let data = unsafe { slot.unchecked_unset() };

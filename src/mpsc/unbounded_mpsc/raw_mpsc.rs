@@ -60,18 +60,22 @@ impl<T: Debug> RawMpsc<T> {
     }
 
     pub fn pop(&self) -> Option<T> {
-        let head = self.head.load(Acquire);
-        let segment = unsafe { &*head };
-        match Self::segment_pop(segment){
-            Some(data) => return Some(data),
-            None=>{
-                if self.tail.load(Acquire) != head {
-                    fence(Acquire);
-                    let next = segment.next.get();
-                    self.head.store(next, Release);
-                    let _dropping = unsafe { Box::from_raw(head) };
+        loop {
+            let head = self.head.load(Acquire);
+            println!("{:p}",head);
+            let segment = unsafe { &*head };
+            match Self::segment_pop(segment){
+                Some(data) => return Some(data),
+                None=>{
+                    if self.tail.load(Acquire) != head {
+                        fence(Acquire);
+                        let next = segment.next.get();
+                        self.head.store(next, Release);
+                        let _dropping = unsafe { Box::from_raw(head) };
+                        continue;
+                    }
+                    break None;
                 }
-                None
             }
         }
     }
@@ -80,11 +84,12 @@ impl<T: Debug> RawMpsc<T> {
         let backoff = LocalBackoff::new();
         loop {
             let curr_head = segment.next_head.load(Acquire);
-            if segment.tail.load(Acquire) != curr_head {
-                // bounding within range without mod for performance
-                let is_bound =
-                    unsafe { transmute::<isize, usize>(-((curr_head + 1 < SEGMENT_SIZE) as isize)) };
-                let next_head = (curr_head + 1) & is_bound;
+            let next_unbound = curr_head + 1;
+            // bounding within range without mod for performance
+            let is_bound =
+                unsafe { transmute::<isize, usize>(-((next_unbound < SEGMENT_SIZE) as isize)) };
+            let next_head = next_unbound & is_bound;
+            if segment.tail.load(Acquire) != next_head {
                 match segment
                     .next_head
                     .compare_exchange(curr_head, next_head, AcqRel, Relaxed)
@@ -255,7 +260,7 @@ mod tests {
     }
 
     // Test concurrent push with slight delays to simulate contention
-    // #[test]
+    #[test]
     fn test_multi_producer_with_delay() {
         const PRODUCERS: usize = 4;
         const MSGS_PER_PRODUCER: usize = 1000;
